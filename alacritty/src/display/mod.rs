@@ -32,28 +32,29 @@ use alacritty_terminal::index::{Column, Direction, Line, Point};
 use alacritty_terminal::selection::Selection;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::{
-    self, LineDamageBounds, MIN_COLUMNS, MIN_SCREEN_LINES, Term, TermDamage, TermMode,
+    self, LineDamageBounds, Term, TermDamage, TermMode, MIN_COLUMNS, MIN_SCREEN_LINES,
 };
 use alacritty_terminal::vte::ansi::{CursorShape, NamedColor};
 
-use crate::config::UiConfig;
 use crate::config::debug::RendererPreference;
 use crate::config::font::Font;
+use crate::config::retro_effect::RetroEffectConfig;
 use crate::config::window::Dimensions;
 #[cfg(not(windows))]
 use crate::config::window::StartupMode;
+use crate::config::UiConfig;
 use crate::display::bell::VisualBell;
 use crate::display::color::{List, Rgb};
 use crate::display::content::{RenderableContent, RenderableCursor};
 use crate::display::cursor::IntoRects;
-use crate::display::damage::{DamageTracker, damage_y_to_viewport_y};
+use crate::display::damage::{damage_y_to_viewport_y, DamageTracker};
 use crate::display::hint::{HintMatch, HintState};
 use crate::display::meter::Meter;
 use crate::display::window::Window;
 use crate::event::{Event, EventType, Mouse, SearchState};
 use crate::message_bar::{MessageBuffer, MessageType};
 use crate::renderer::rects::{RenderLine, RenderLines, RenderRect};
-use crate::renderer::{self, GlyphCache, Renderer, platform};
+use crate::renderer::{self, platform, GlyphCache, Renderer};
 use crate::scheduler::{Scheduler, TimerId, Topic};
 use crate::string::{ShortenDirection, StrShortener};
 
@@ -390,6 +391,7 @@ pub struct Display {
 
     renderer: ManuallyDrop<Renderer>,
     renderer_preference: Option<RendererPreference>,
+    retro_effect: RetroEffectConfig,
 
     surface: ManuallyDrop<Surface<WindowSurface>>,
 
@@ -436,7 +438,14 @@ impl Display {
         let context = gl_context.make_current(&surface)?;
 
         // Create renderer.
-        let mut renderer = Renderer::new(&context, config.debug.renderer)?;
+        let viewport_size_for_renderer = window.inner_size();
+        let mut renderer = Renderer::new(
+            &context,
+            config.debug.renderer,
+            &config.retro_effect,
+            viewport_size_for_renderer.width,
+            viewport_size_for_renderer.height,
+        )?;
 
         // Load font common glyphs to accelerate rendering.
         debug!("Filling glyph cache with common glyphs");
@@ -519,6 +528,7 @@ impl Display {
             visual_bell: VisualBell::from(&config.bell),
             renderer: ManuallyDrop::new(renderer),
             renderer_preference: config.debug.renderer,
+            retro_effect: config.retro_effect.clone(),
             surface: ManuallyDrop::new(surface),
             colors: List::from(&config.colors),
             frame_timer: FrameTimer::new(),
@@ -591,8 +601,14 @@ impl Display {
         self.context.make_current(&self.surface).expect("failed to reativate context after reset.");
 
         // Recreate renderer.
-        let renderer = Renderer::new(&self.context, self.renderer_preference)
-            .expect("failed to recreate renderer after reset");
+        let renderer = Renderer::new(
+            &self.context,
+            self.renderer_preference,
+            &self.retro_effect,
+            self.size_info.width() as u32,
+            self.size_info.height() as u32,
+        )
+        .expect("failed to recreate renderer after reset");
         self.renderer = ManuallyDrop::new(renderer);
 
         // Resize the renderer.
@@ -835,6 +851,8 @@ impl Display {
         // Make sure this window's OpenGL context is active.
         self.make_current();
 
+        let post_processing_active = self.renderer.has_post_processor();
+
         self.renderer.clear(background_color, config.window_opacity());
         let mut lines = RenderLines::new();
 
@@ -1027,6 +1045,17 @@ impl Display {
             self.renderer.draw_rects(&self.size_info, &metrics, rects);
         }
 
+        if post_processing_active {
+            self.renderer.draw_post_processor(&config.retro_effect, size_info.cell_height());
+
+            // Post-processing writes the entire screen, so we must tell the
+            // compositor (on Wayland) that the full surface has changed.
+            // Without this, swap_buffers_with_damage would only present the
+            // damaged sub-rects, leaving stale content from the previous buffer
+            // in the regions the compositor considers "undamaged".
+            self.damage_tracker.frame().mark_fully_damaged();
+        }
+
         // Clearing debug highlights from the previous frame requires full redraw.
         self.swap_buffers();
 
@@ -1051,6 +1080,7 @@ impl Display {
         self.damage_tracker.debug = config.debug.highlight_damage;
         self.visual_bell.update_config(&config.bell);
         self.colors = List::from(&config.colors);
+        self.retro_effect = config.retro_effect.clone();
     }
 
     /// Update the mouse/vi mode cursor hint highlighting.

@@ -9,21 +9,24 @@ use ahash::RandomState;
 use crossfont::Metrics;
 use glutin::context::{ContextApi, GlContext, PossiblyCurrentContext};
 use glutin::display::{GetGlDisplay, GlDisplay};
-use log::{LevelFilter, debug, info};
+use log::{LevelFilter, debug, error, info};
 use unicode_width::UnicodeWidthChar;
 
 use alacritty_terminal::index::Point;
 use alacritty_terminal::term::cell::Flags;
 
 use crate::config::debug::RendererPreference;
+use crate::config::retro_effect::RetroEffectConfig;
 use crate::display::SizeInfo;
 use crate::display::color::Rgb;
 use crate::display::content::RenderableCell;
 use crate::gl;
+use crate::renderer::post::PostProcessor;
 use crate::renderer::rects::{RectRenderer, RenderRect};
 use crate::renderer::shader::ShaderError;
 
 pub mod platform;
+pub mod post;
 pub mod rects;
 mod shader;
 mod text;
@@ -89,6 +92,7 @@ enum TextRendererProvider {
 pub struct Renderer {
     text_renderer: TextRendererProvider,
     rect_renderer: RectRenderer,
+    post_processor: Option<PostProcessor>,
     robustness: bool,
 }
 
@@ -119,6 +123,9 @@ impl Renderer {
     pub fn new(
         context: &PossiblyCurrentContext,
         renderer_preference: Option<RendererPreference>,
+        retro_config: &RetroEffectConfig,
+        initial_width: u32,
+        initial_height: u32,
     ) -> Result<Self, Error> {
         // We need to load OpenGL functions once per instance, but only after we make our context
         // current due to WGL limitations.
@@ -161,6 +168,18 @@ impl Renderer {
             (text_renderer, rect_renderer)
         };
 
+        let post_processor = if use_glsl3 && retro_config.enabled {
+            match PostProcessor::new(initial_width, initial_height) {
+                Ok(pp) => Some(pp),
+                Err(err) => {
+                    error!("Failed to create retro post-processor: {err}");
+                    None
+                },
+            }
+        } else {
+            None
+        };
+
         // Enable debug logging for OpenGL as well.
         if log::max_level() >= LevelFilter::Debug && GlExtensions::contains("GL_KHR_debug") {
             debug!("Enabled debug logging for OpenGL");
@@ -171,7 +190,7 @@ impl Renderer {
             }
         }
 
-        Ok(Self { text_renderer, rect_renderer, robustness })
+        Ok(Self { text_renderer, rect_renderer, post_processor, robustness })
     }
 
     pub fn draw_cells<I: Iterator<Item = RenderableCell>>(
@@ -340,11 +359,26 @@ impl Renderer {
     }
 
     /// Resize the renderer.
-    pub fn resize(&self, size_info: &SizeInfo) {
+    pub fn resize(&mut self, size_info: &SizeInfo) {
         self.set_viewport(size_info);
         match &self.text_renderer {
             TextRendererProvider::Gles2(renderer) => renderer.resize(size_info),
             TextRendererProvider::Glsl3(renderer) => renderer.resize(size_info),
+        }
+        if let Some(pp) = &mut self.post_processor {
+            pp.resize(size_info.width() as u32, size_info.height() as u32);
+        }
+    }
+
+    /// Returns true if post-processing is active.
+    pub fn has_post_processor(&self) -> bool {
+        self.post_processor.is_some()
+    }
+
+    /// Draw the retro post-processing effect to screen.
+    pub fn draw_post_processor(&self, config: &RetroEffectConfig, cell_height: f32) {
+        if let Some(pp) = &self.post_processor {
+            pp.draw(config, cell_height);
         }
     }
 }

@@ -181,6 +181,8 @@ impl<'a> TextRenderer<'a> for Gles2Renderer {
     where
         F: FnOnce(Self::RenderApi) -> T,
     {
+        self.active_tex = 0;
+
         unsafe {
             gl::UseProgram(self.program.id());
             gl::BindVertexArray(self.vao);

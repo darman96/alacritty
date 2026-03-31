@@ -1986,7 +1986,11 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                         self.ctx.terminal.is_focused = is_focused;
 
                         // When the unfocused hollow is used we must redraw on focus change.
-                        if self.ctx.config.cursor.unfocused_hollow {
+                        // Also force redraw when retro effects are active since the
+                        // post-processor needs full-frame damage on every swap.
+                        if self.ctx.config.cursor.unfocused_hollow
+                            || self.ctx.config.retro_effect.enabled
+                        {
                             *self.ctx.dirty = true;
                         }
 

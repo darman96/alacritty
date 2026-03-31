@@ -154,6 +154,10 @@ impl<'a> TextRenderer<'a> for Glsl3Renderer {
     where
         F: FnOnce(Self::RenderApi) -> T,
     {
+        // Reset texture cache so the first batch always rebinds the atlas.
+        // External draw calls (e.g. post-processing) may have changed TEXTURE0.
+        self.active_tex = 0;
+
         unsafe {
             gl::UseProgram(self.program.id());
             self.program.set_term_uniforms(size_info);

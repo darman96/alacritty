@@ -14,11 +14,10 @@ use winit::keyboard::{Key, ModifiersState};
 
 use alacritty_config::SerdeReplace;
 use alacritty_config_derive::{ConfigDeserialize, SerdeReplace};
-use alacritty_terminal::term::Config as TermConfig;
 use alacritty_terminal::term::search::RegexSearch;
+use alacritty_terminal::term::Config as TermConfig;
 use alacritty_terminal::tty::{Options as PtyOptions, Shell};
 
-use crate::config::LOG_TARGET_CONFIG;
 use crate::config::bell::BellConfig;
 use crate::config::bindings::{
     self, Action, Binding, BindingKey, KeyBinding, KeyLocation, ModeWrapper, ModsWrapper,
@@ -30,10 +29,12 @@ use crate::config::debug::Debug;
 use crate::config::font::Font;
 use crate::config::general::General;
 use crate::config::mouse::Mouse;
+use crate::config::retro_effect::RetroEffectConfig;
 use crate::config::scrolling::Scrolling;
 use crate::config::selection::Selection;
 use crate::config::terminal::Terminal;
 use crate::config::window::WindowConfig;
+use crate::config::LOG_TARGET_CONFIG;
 
 /// Regex used for the default URL hint.
 #[rustfmt::skip]
@@ -85,6 +86,9 @@ pub struct UiConfig {
 
     /// Config for the alacritty_terminal itself.
     pub terminal: Terminal,
+
+    /// Retro terminal effect (scanlines + glow).
+    pub retro_effect: RetroEffectConfig,
 
     /// Keyboard configuration.
     keyboard: Keyboard,

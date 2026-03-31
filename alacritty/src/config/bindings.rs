@@ -408,12 +408,24 @@ macro_rules! bindings {
 }
 
 macro_rules! trigger {
-    (KeyBinding, $key:literal, $location:expr) => {{ BindingKey::Keycode { key: Key::Character($key.into()), location: $location } }};
-    (KeyBinding, $key:literal,) => {{ BindingKey::Keycode { key: Key::Character($key.into()), location: KeyLocation::Any } }};
-    (KeyBinding, $key:ident, $location:expr) => {{ BindingKey::Keycode { key: Key::Named(NamedKey::$key), location: $location } }};
-    (KeyBinding, $key:ident,) => {{ BindingKey::Keycode { key: Key::Named(NamedKey::$key), location: KeyLocation::Any } }};
-    (MouseBinding, MouseButton::$button:ident,) => {{ MouseEvent::Button(MouseButton::$button) }};
-    (MouseBinding, MouseEvent::$event:ident,) => {{ MouseEvent::$event }};
+    (KeyBinding, $key:literal, $location:expr) => {{
+        BindingKey::Keycode { key: Key::Character($key.into()), location: $location }
+    }};
+    (KeyBinding, $key:literal,) => {{
+        BindingKey::Keycode { key: Key::Character($key.into()), location: KeyLocation::Any }
+    }};
+    (KeyBinding, $key:ident, $location:expr) => {{
+        BindingKey::Keycode { key: Key::Named(NamedKey::$key), location: $location }
+    }};
+    (KeyBinding, $key:ident,) => {{
+        BindingKey::Keycode { key: Key::Named(NamedKey::$key), location: KeyLocation::Any }
+    }};
+    (MouseBinding, MouseButton::$button:ident,) => {{
+        MouseEvent::Button(MouseButton::$button)
+    }};
+    (MouseBinding, MouseEvent::$event:ident,) => {{
+        MouseEvent::$event
+    }};
 }
 
 pub fn default_mouse_bindings() -> Vec<MouseBinding> {
